@@ -81,6 +81,8 @@ public:
     int FulfilledRequestExpireTime() const { return nFulfilledRequestExpireTime; }
     std::string SporkPubKey() const { return strSporkPubKey; }
     std::string MasternodePaymentPubKey() const { return strMasternodePaymentsPubKey; }
+    /* Return the auxpow chain ID.  */
+    inline int32_t AuxpowChainId () const { return 0x0001; }
 protected:
     CChainParams() {}
 
