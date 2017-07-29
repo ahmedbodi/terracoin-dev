@@ -31,7 +31,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
     genesis.nTime    = nTime;
     genesis.nBits    = nBits;
     genesis.nNonce   = nNonce;
-    genesis.nVersion = nVersion;
+    genesis.nVersion.SetGenesisVersion(nVersion);
     genesis.vtx.push_back(txNew);
     genesis.hashPrevBlock.SetNull();
     genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
@@ -150,7 +150,6 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            boost::assign::map_list_of
             (    0, uint256S("0x00000000804bbc6a621a9dbb564ce469f492e1ccf2d70f8a6b241e26a277afa2"))
             (    1, uint256S("0x000000000fbc1c60a7610c894f98d102390e9e00cc18caced4eb4198ec0c3645"))
             (   31, uint256S("0x00000000045341e3ebdfa180e4a0f1e4da23829609517a3673b4a796714a7593"))
@@ -221,6 +220,21 @@ public:
 				1000.0 // * estimated number of transactions per day after checkpoint
         };
     }
+
+	int AuxpowStartHeight() const
+    {
+    	return 453273;
+    }
+
+    bool StrictChainId() const
+    {
+    	return true;
+    }
+
+    bool AllowLegacyBlocks(unsigned nHeight) const
+    {
+    	return static_cast<int> (nHeight) < AuxpowStartHeight();
+    }
 };
 static CMainParams mainParams;
 
@@ -277,8 +291,8 @@ public:
 
         genesis = CreateGenesisBlock(1390666206UL, 3861367235UL, 0x1e0ffff0, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x00000bafbc94add76cb75e2ec92894837288a481e5c005f6563d91623bf8bc2c"));
-        assert(genesis.hashMerkleRoot == uint256S("0xe0028eb9648db56b1ac77cf090b99048a8007e2bb64b68f092c03c7f56a662c7"));
+        //assert(consensus.hashGenesisBlock == uint256S("0x00000bafbc94add76cb75e2ec92894837288a481e5c005f6563d91623bf8bc2c"));
+        //assert(genesis.hashMerkleRoot == uint256S("0xe0028eb9648db56b1ac77cf090b99048a8007e2bb64b68f092c03c7f56a662c7"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -328,6 +342,22 @@ public:
         };
 
     }
+
+    int AuxpowStartHeight() const
+    {
+        return 453273;
+    }
+
+    bool StrictChainId() const
+    {
+        return true;
+    }
+
+    bool AllowLegacyBlocks(unsigned nHeight) const
+    {
+        return static_cast<int> (nHeight) < AuxpowStartHeight();
+    }
+
 };
 static CTestNetParams testNetParams;
 
@@ -381,8 +411,8 @@ public:
 
         genesis = CreateGenesisBlock(1417713337, 1096447, 0x207fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x000008ca1832a4baf228eb1553c03d3a2c8e02399550dd6ea8d65cec3ef23d2e"));
-        assert(genesis.hashMerkleRoot == uint256S("0xe0028eb9648db56b1ac77cf090b99048a8007e2bb64b68f092c03c7f56a662c7"));
+        //assert(consensus.hashGenesisBlock == uint256S("0x000008ca1832a4baf228eb1553c03d3a2c8e02399550dd6ea8d65cec3ef23d2e"));
+        //assert(genesis.hashMerkleRoot == uint256S("0xe0028eb9648db56b1ac77cf090b99048a8007e2bb64b68f092c03c7f56a662c7"));
 
         vFixedSeeds.clear(); //! Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();  //! Regtest mode doesn't have any DNS seeds.
@@ -415,6 +445,22 @@ public:
         // Regtest Dash BIP44 coin type is '1' (All coin's testnet default)
         base58Prefixes[EXT_COIN_TYPE]  = boost::assign::list_of(0x80)(0x00)(0x00)(0x01).convert_to_container<std::vector<unsigned char> >();
    }
+
+    int AuxpowStartHeight() const
+    {
+        return 453273;
+    }
+
+    bool StrictChainId() const
+    {
+        return true;
+    }
+
+    bool AllowLegacyBlocks(unsigned nHeight) const
+    {
+        return static_cast<int> (nHeight) < AuxpowStartHeight();
+    }
+
 };
 static CRegTestParams regTestParams;
 
