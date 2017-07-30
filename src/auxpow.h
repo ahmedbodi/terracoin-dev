@@ -16,6 +16,7 @@
 #include <vector>
 
 class CBlock;
+class CBlockHeader;
 class CBlockIndex;
 class CReserveKey;
 
@@ -155,17 +156,6 @@ public:
     return parentBlock.GetHash ();
   }
 
-  /**
-   * Return parent block.  This is only used for the temporary parentblock
-   * auxpow version check.
-   * @return The parent block.
-   */
-  /* FIXME: Remove after the hardfork.  */
-  inline const CPureBlockHeader&
-  getParentBlock () const
-  {
-    return parentBlock;
-  }
 
   /**
    * Calculate the expected index in the merkle tree.  This is also used
@@ -177,6 +167,22 @@ public:
    */
   static int getExpectedIndex (uint32_t nNonce, int nChainId, unsigned h);
 
+  /**
+   * Check a merkle branch.  This used to be in CBlock, but was removed
+   * upstream.  Thus include it here now.
+   */
+  static uint256 CheckMerkleBranch (uint256 hash,
+                                    const std::vector<uint256>& vMerkleBranch,
+                                    int nIndex);
+
+  /**
+   * Initialise the auxpow of the given block header.  This constructs
+   * a minimal CAuxPow object with a minimal parent block and sets
+   * it on the block header.  The auxpow is not necessarily valid, but
+   * can be "mined" to make it valid.
+   * @param header The header to set the auxpow on.
+   */
+  static void initAuxPow (CBlockHeader& header);
 };
 
 #endif // BITCOIN_AUXPOW_H

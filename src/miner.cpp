@@ -92,7 +92,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& s
 
     /* Initialise the block version.  */
     const int32_t nChainId = Params().AuxpowChainId();
-    pblock->nVersion.SetBaseVersion(CBlockHeader::CURRENT_VERSION, nChainId);
+    pblock->SetBaseVersion(4, nChainId);
 
     // Largest block you're willing to create:
     unsigned int nBlockMaxSize = GetArg("-blockmaxsize", DEFAULT_BLOCK_MAX_SIZE);
@@ -142,7 +142,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& s
         // -regtest only: allow overriding block.nVersion with
         // -blockversion=N to test forking scenarios
         if (chainparams.MineBlocksOnDemand())
-        	pblock->nVersion.SetBaseVersion(GetArg("-blockversion", pblock->nVersion.GetBaseVersion()), nChainId);
+        	pblock->SetBaseVersion(GetArg("-blockversion", pblock->nVersion), nChainId);
 
         int64_t nLockTimeCutoff = (STANDARD_LOCKTIME_VERIFY_FLAGS & LOCKTIME_MEDIAN_TIME_PAST)
                                 ? nMedianTimePast
