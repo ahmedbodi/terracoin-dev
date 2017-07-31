@@ -34,7 +34,7 @@ struct CCheckpointData {
 
 /**
  * CChainParams defines various tweakable parameters of a given instance of the
- * Dash system. There are three: the main network on which people trade goods
+ * Terracoin system. There are three: the main network on which people trade goods
  * and services, the public test network which gets reset from time to time and
  * a regression test mode which is intended for private networks only. It has
  * minimal difficulty to ensure that blocks can be found instantly.
@@ -82,7 +82,7 @@ public:
     std::string SporkPubKey() const { return strSporkPubKey; }
     std::string MasternodePaymentPubKey() const { return strMasternodePaymentsPubKey; }
     /* Return the auxpow chain ID.  */
-    inline int32_t AuxpowChainId () const { return 0x0032; }
+    inline int32_t AuxpowChainId () const { return 20;}
     /* Return start height of auxpow and the retarget interval change.  */
     virtual int AuxpowStartHeight() const = 0;
     /* Return whether or not to enforce strict chain ID checks.  */

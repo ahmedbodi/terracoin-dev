@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2014-2017 The Dash Core developers
+// Copyright (c) 2014-2017 The Terracoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -58,7 +58,7 @@
 using namespace std;
 
 #if defined(NDEBUG)
-# error "Dash Core cannot be compiled without assertions."
+# error "Terracoin Core cannot be compiled without assertions."
 #endif
 
 /**
@@ -1671,17 +1671,17 @@ bool CheckProofOfWork(const CBlockHeader& block)
        the chain ID is correct.  Legacy blocks are not allowed since
        the merge-mining start, which is checked in AcceptBlockHeader
        where the height is known.  */
-    if (!block.IsLegacy() && Params().StrictChainId()
-        && block.GetChainId() != Params().AuxpowChainId())
+    if (!block.nVersion.IsLegacy() && Params().StrictChainId()
+        && block.nVersion.GetChainId() != Params().AuxpowChainId())
         return error("%s : block does not have our chain ID"
                      " (got %d, expected %d, full nVersion %d)",
-                     __func__, block.GetChainId(),
-                     Params().AuxpowChainId(), block.nVersion);
+                     __func__, block.nVersion.GetChainId(),
+                     Params().AuxpowChainId(), block.nVersion.GetFullVersion());
 
     /* If there is no auxpow, just check the block hash.  */
     if (!block.auxpow)
     {
-        if (block.IsAuxpow())
+        if (block.nVersion.IsAuxpow())
             return error("%s : no auxpow on block with auxpow version",
                          __func__);
 
@@ -1692,17 +1692,22 @@ bool CheckProofOfWork(const CBlockHeader& block)
     }
 
     /* We have auxpow.  Check it.  */
-    if (!block.IsAuxpow())
+    if (!block.nVersion.IsAuxpow())
         return error("%s : auxpow on block with non-auxpow version", __func__);
 
-    if (!block.auxpow->check(block.GetHash(), block.GetChainId()))
+    /* Temporary check:  Disallow parent blocks with auxpow version.  This is
+       for compatibility with the old client.  */
+    /* FIXME: Remove this check with a hardfork later on.  */
+    if (block.auxpow->getParentBlock().nVersion.IsAuxpow())
+        return error("%s : auxpow parent block has auxpow version", __func__);
+
+    if (!block.auxpow->check(block.GetHash(), block.nVersion.GetChainId()))
         return error("%s : AUX POW is not valid", __func__);
     if (!CheckProofOfWork(block.auxpow->getParentBlockHash(), block.nBits, Params().GetConsensus()))
-		return error("%s : AUX proof of work failed", __func__);
+        return error("%s : AUX proof of work failed", __func__);
 
     return true;
 }
-
 bool WriteBlockToDisk(const CBlock& block, CDiskBlockPos& pos, const CMessageHeader::MessageStartChars& messageStart)
 {
     // Open history file to append
@@ -1804,12 +1809,48 @@ NOTE:   unlike bitcoin we are using PREVIOUS block height here,
 */
 CAmount GetBlockSubsidy(int nPrevBits, int nPrevHeight, const Consensus::Params& consensusParams, bool fSuperblockPartOnly)
 {
-	int nHeight = nPrevHeight + 1;
-    int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
-    CAmount nSubsidy = 20 * COIN;
-    // Subsidy is cut in half every 210,000 blocks which will occur approximately every 4 years.
-    nSubsidy >>= halvings;
-	return nSubsidy;
+    double dDiff;
+    CAmount nSubsidyBase;
+
+    if (nPrevHeight <= 4500 && Params().NetworkIDString() == CBaseChainParams::MAIN) {
+        /* a bug which caused diff to not be correctly calculated */
+        dDiff = (double)0x0000ffff / (double)(nPrevBits & 0x00ffffff);
+    } else {
+        dDiff = ConvertBitsToDouble(nPrevBits);
+    }
+
+    if (nPrevHeight < 5465) {
+        // Early ages...
+        // 1111/((x+1)^2)
+        nSubsidyBase = (1111.0 / (pow((dDiff+1.0),2.0)));
+        if(nSubsidyBase > 500) nSubsidyBase = 500;
+        else if(nSubsidyBase < 1) nSubsidyBase = 1;
+    } else if (nPrevHeight < 17000 || (dDiff <= 75 && nPrevHeight < 24000)) {
+        // CPU mining era
+        // 11111/(((x+51)/6)^2)
+        nSubsidyBase = (11111.0 / (pow((dDiff+51.0)/6.0,2.0)));
+        if(nSubsidyBase > 500) nSubsidyBase = 500;
+        else if(nSubsidyBase < 25) nSubsidyBase = 25;
+    } else {
+        // GPU/ASIC mining era
+        // 2222222/(((x+2600)/9)^2)
+        nSubsidyBase = (2222222.0 / (pow((dDiff+2600.0)/9.0,2.0)));
+        if(nSubsidyBase > 25) nSubsidyBase = 25;
+        else if(nSubsidyBase < 5) nSubsidyBase = 5;
+    }
+
+    // LogPrintf("height %u diff %4.2f reward %d\n", nPrevHeight, dDiff, nSubsidyBase);
+    CAmount nSubsidy = nSubsidyBase * COIN;
+
+    // yearly decline of production by ~7.1% per year, projected ~18M coins max by year 2050+.
+    for (int i = consensusParams.nSubsidyHalvingInterval; i <= nPrevHeight; i += consensusParams.nSubsidyHalvingInterval) {
+        nSubsidy -= nSubsidy/14;
+    }
+
+    // Hard fork to reduce the block reward by 10 extra percent (allowing budget/superblocks)
+    CAmount nSuperblockPart = (nPrevHeight > consensusParams.nBudgetPaymentsStartBlock) ? nSubsidy/10 : 0;
+
+    return fSuperblockPartOnly ? nSuperblockPart : nSubsidy - nSuperblockPart;
 }
 
 CAmount GetMasternodePayment(int nHeight, CAmount blockValue)
@@ -2420,7 +2461,7 @@ bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, unsigne
 static CCheckQueue<CScriptCheck> scriptcheckqueue(128);
 
 void ThreadScriptCheck() {
-    RenameThread("dash-scriptch");
+    RenameThread("terracoin-scriptch");
     scriptcheckqueue.Thread();
 }
 
@@ -2532,8 +2573,8 @@ public:
 
     bool Condition(const CBlockIndex* pindex, const Consensus::Params& params) const
     {
-        return ((pindex->nVersion & VERSIONBITS_TOP_MASK) == VERSIONBITS_TOP_BITS) &&
-               ((pindex->nVersion >> bit) & 1) != 0 &&
+        return ((pindex->nVersion.GetBaseVersion() & VERSIONBITS_TOP_MASK) == VERSIONBITS_TOP_BITS) &&
+               ((pindex->nVersion.GetBaseVersion() >> bit) & 1) != 0 &&
                ((ComputeBlockVersion(pindex->pprev, params) >> bit) & 1) == 0;
     }
 };
@@ -2625,15 +2666,15 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     unsigned int flags = fStrictPayToScriptHash ? SCRIPT_VERIFY_P2SH : SCRIPT_VERIFY_NONE;
 
-    // Start enforcing the DERSIG (BIP66) rules, for block=3 blocks,
+    // Start enforcing the DERSIG (BIP66) rules, for block.nVersion.GetBaseVersion()=3 blocks,
     // when 75% of the network has upgraded:
-    if (block.nVersion >= 3 && IsSuperMajority(3, pindex->pprev, chainparams.GetConsensus().nMajorityEnforceBlockUpgrade, chainparams.GetConsensus())) {
+    if (block.nVersion.GetBaseVersion() >= 3 && IsSuperMajority(3, pindex->pprev, chainparams.GetConsensus().nMajorityEnforceBlockUpgrade, chainparams.GetConsensus())) {
         flags |= SCRIPT_VERIFY_DERSIG;
     }
 
-    // Start enforcing CHECKLOCKTIMEVERIFY, (BIP65) for block=4
+    // Start enforcing CHECKLOCKTIMEVERIFY, (BIP65) for block.nVersion.GetBaseVersion()=4
     // blocks, when 75% of the network has upgraded:
-    if (block.nVersion >= 4 && IsSuperMajority(4, pindex->pprev, chainparams.GetConsensus().nMajorityEnforceBlockUpgrade, chainparams.GetConsensus())) {
+    if (block.nVersion.GetBaseVersion() >= 4 && IsSuperMajority(4, pindex->pprev, chainparams.GetConsensus().nMajorityEnforceBlockUpgrade, chainparams.GetConsensus())) {
         flags |= SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY;
     }
 
@@ -2792,7 +2833,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTime3 = GetTimeMicros(); nTimeConnect += nTime3 - nTime2;
     LogPrint("bench", "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs]\n", (unsigned)block.vtx.size(), 0.001 * (nTime3 - nTime2), 0.001 * (nTime3 - nTime2) / block.vtx.size(), nInputs <= 1 ? 0 : 0.001 * (nTime3 - nTime2) / (nInputs-1), nTimeConnect * 0.000001);
 
-    // DASH : MODIFIED TO CHECK MASTERNODE PAYMENTS AND SUPERBLOCKS
+    // TERRACOIN : MODIFIED TO CHECK MASTERNODE PAYMENTS AND SUPERBLOCKS
 
     // It's possible that we simply don't have enough data and this could fail
     // (i.e. block itself could be a correct one and we need to store it),
@@ -2803,15 +2844,15 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CAmount blockReward = nFees + GetBlockSubsidy(pindex->pprev->nBits, pindex->pprev->nHeight, chainparams.GetConsensus());
     std::string strError = "";
     if (!IsBlockValueValid(block, pindex->nHeight, blockReward, strError)) {
-        return state.DoS(0, error("ConnectBlock(DASH): %s", strError), REJECT_INVALID, "bad-cb-amount");
+        return state.DoS(0, error("ConnectBlock(TERRACOIN): %s", strError), REJECT_INVALID, "bad-cb-amount");
     }
 
     if (!IsBlockPayeeValid(block.vtx[0], pindex->nHeight, blockReward)) {
         mapRejectedBlocks.insert(make_pair(block.GetHash(), GetTime()));
-        return state.DoS(0, error("ConnectBlock(DASH): couldn't find masternode or superblock payments"),
+        return state.DoS(0, error("ConnectBlock(TERRACOIN): couldn't find masternode or superblock payments"),
                                 REJECT_INVALID, "bad-cb-payee");
     }
-    // END DASH
+    // END TERRACOIN
 
     if (!control.Wait())
         return state.DoS(100, false);
@@ -3040,7 +3081,7 @@ void static UpdateTip(CBlockIndex *pindexNew) {
         for (int i = 0; i < 100 && pindex != NULL; i++)
         {
             int32_t nExpectedVersion = ComputeBlockVersion(pindex->pprev, chainParams.GetConsensus());
-            if (pindex->nVersion > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->nVersion & ~nExpectedVersion) != 0)
+            if (pindex->nVersion.GetBaseVersion() > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->nVersion.GetBaseVersion() & ~nExpectedVersion) != 0)
                 ++nUpgraded;
             pindex = pindex->pprev;
         }
@@ -3750,7 +3791,7 @@ bool CheckBlock(const CBlock& block, CValidationState& state, bool fCheckPOW, bo
                              REJECT_INVALID, "bad-cb-multiple");
 
 
-    // DASH : CHECK TRANSACTIONS FOR INSTANTSEND
+    // TERRACOIN : CHECK TRANSACTIONS FOR INSTANTSEND
 
     if(sporkManager.IsSporkActive(SPORK_3_INSTANTSEND_BLOCK_FILTERING)) {
         // We should never accept block which conflicts with completed transaction lock,
@@ -3770,17 +3811,17 @@ bool CheckBlock(const CBlock& block, CValidationState& state, bool fCheckPOW, bo
                     instantsend.Relay(hashLocked);
                     LOCK(cs_main);
                     mapRejectedBlocks.insert(make_pair(block.GetHash(), GetTime()));
-                    return state.DoS(0, error("CheckBlock(DASH): transaction %s conflicts with transaction lock %s",
+                    return state.DoS(0, error("CheckBlock(TERRACOIN): transaction %s conflicts with transaction lock %s",
                                                 tx.GetHash().ToString(), hashLocked.ToString()),
                                      REJECT_INVALID, "conflict-tx-lock");
                 }
             }
         }
     } else {
-        LogPrintf("CheckBlock(DASH): spork is off, skipping transaction locking checks\n");
+        LogPrintf("CheckBlock(TERRACOIN): spork is off, skipping transaction locking checks\n");
     }
 
-    // END DASH
+    // END TERRACOIN
 
     // Check transactions
     BOOST_FOREACH(const CTransaction& tx, block.vtx)
@@ -3827,7 +3868,7 @@ bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& sta
 
     // Disallow legacy blocks after merge-mining start.
     if (!Params().AllowLegacyBlocks(nHeight)
-        && block.IsLegacy())
+        && block.nVersion.IsLegacy())
         return state.DoS(100, error("%s : legacy block after auxpow start",
                                     __func__),
                          REJECT_INVALID, "late-legacy-block");
@@ -3853,20 +3894,20 @@ bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& sta
         return state.Invalid(error("%s: block's timestamp is too early", __func__),
                              REJECT_INVALID, "time-too-old");
 
-    // Reject block=1 blocks when 95% (75% on testnet) of the network has upgraded:
-    //if (block < 2 && IsSuperMajority(2, pindexPrev, consensusParams.nMajorityRejectBlockOutdated, consensusParams))
-    //    return state.Invalid(error("%s: rejected nVersion=1 block", __func__),
-    //                         REJECT_OBSOLETE, "bad-version");
+    // Reject block.nVersion.GetBaseVersion()=1 blocks when 95% (75% on testnet) of the network has upgraded:
+    if (block.nVersion.GetBaseVersion() < 2 && IsSuperMajority(2, pindexPrev, consensusParams.nMajorityRejectBlockOutdated, consensusParams))
+        return state.Invalid(error("%s: rejected nVersion=1 block", __func__),
+                             REJECT_OBSOLETE, "bad-version");
 
-    // Reject block=2 blocks when 95% (75% on testnet) of the network has upgraded:
-    //if (block < 3 && IsSuperMajority(3, pindexPrev, consensusParams.nMajorityRejectBlockOutdated, consensusParams))
-    //    return state.Invalid(error("%s: rejected nVersion=2 block", __func__),
-    //                         REJECT_OBSOLETE, "bad-version");
+    // Reject block.nVersion.GetBaseVersion()=2 blocks when 95% (75% on testnet) of the network has upgraded:
+    if (block.nVersion.GetBaseVersion() < 3 && IsSuperMajority(3, pindexPrev, consensusParams.nMajorityRejectBlockOutdated, consensusParams))
+        return state.Invalid(error("%s: rejected nVersion=2 block", __func__),
+                             REJECT_OBSOLETE, "bad-version");
 
-    // Reject block=3 blocks when 95% (75% on testnet) of the network has upgraded:
-    //if (block < 4 && IsSuperMajority(4, pindexPrev, consensusParams.nMajorityRejectBlockOutdated, consensusParams))
-    //    return state.Invalid(error("%s : rejected nVersion=3 block", __func__),
-    //                         REJECT_OBSOLETE, "bad-version");
+    // Reject block.nVersion.GetBaseVersion()=3 blocks when 95% (75% on testnet) of the network has upgraded:
+    if (block.nVersion.GetBaseVersion() < 4 && IsSuperMajority(4, pindexPrev, consensusParams.nMajorityRejectBlockOutdated, consensusParams))
+        return state.Invalid(error("%s : rejected nVersion=3 block", __func__),
+                             REJECT_OBSOLETE, "bad-version");
 
     return true;
 }
@@ -3893,9 +3934,9 @@ bool ContextualCheckBlock(const CBlock& block, CValidationState& state, CBlockIn
         }
     }
 
-    // Enforce block=2 rule that the coinbase starts with serialized block height
+    // Enforce block.nVersion.GetBaseVersion()=2 rule that the coinbase starts with serialized block height
     // if 750 of the last 1,000 blocks are version 2 or greater (51/100 if testnet):
-    if (block.nVersion >= 2 && IsSuperMajority(2, pindexPrev, consensusParams.nMajorityEnforceBlockUpgrade, consensusParams))
+    if (block.nVersion.GetBaseVersion() >= 2 && IsSuperMajority(2, pindexPrev, consensusParams.nMajorityEnforceBlockUpgrade, consensusParams))
     {
         CScript expect = CScript() << nHeight;
         if (block.vtx[0].vin[0].scriptSig.size() < expect.size() ||
@@ -4025,7 +4066,7 @@ static bool IsSuperMajority(int minVersion, const CBlockIndex* pstart, unsigned 
     unsigned int nFound = 0;
     for (int i = 0; i < consensusParams.nMajorityWindow && nFound < nRequired && pstart != NULL; i++)
     {
-        if (pstart->nVersion >= minVersion)
+        if (pstart->nVersion.GetBaseVersion() >= minVersion)
             ++nFound;
         pstart = pstart->pprev;
     }
@@ -4961,7 +5002,7 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
         return mapBlockIndex.count(inv.hash);
 
     /* 
-        Dash Related Inventory Messages
+        Terracoin Related Inventory Messages
 
         --
 

@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2014-2017 The Dash Core developers
+// Copyright (c) 2014-2017 The Terracoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -70,7 +70,7 @@ UniValue blockheaderToJSON(const CBlockIndex* blockindex)
         confirmations = chainActive.Height() - blockindex->nHeight + 1;
     result.push_back(Pair("confirmations", confirmations));
     result.push_back(Pair("height", blockindex->nHeight));
-    result.push_back(Pair("version", blockindex->nVersion));
+    result.push_back(Pair("version", blockindex->nVersion.GetFullVersion()));
     result.push_back(Pair("merkleroot", blockindex->hashMerkleRoot.GetHex()));
     result.push_back(Pair("time", (int64_t)blockindex->nTime));
     result.push_back(Pair("mediantime", (int64_t)blockindex->GetMedianTimePast()));
@@ -98,7 +98,7 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
     result.push_back(Pair("confirmations", confirmations));
     result.push_back(Pair("size", (int)::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION)));
     result.push_back(Pair("height", blockindex->nHeight));
-    result.push_back(Pair("version", block.nVersion));
+    result.push_back(Pair("version", block.nVersion.GetFullVersion()));
     result.push_back(Pair("merkleroot", block.hashMerkleRoot.GetHex()));
     UniValue txs(UniValue::VARR);
     BOOST_FOREACH(const CTransaction&tx, block.vtx)
@@ -610,8 +610,8 @@ UniValue gettxout(const UniValue& params, bool fHelp)
             "     \"hex\" : \"hex\",        (string) \n"
             "     \"reqSigs\" : n,          (numeric) Number of required signatures\n"
             "     \"type\" : \"pubkeyhash\", (string) The type, eg pubkeyhash\n"
-            "     \"addresses\" : [          (array of string) array of dash addresses\n"
-            "        \"dashaddress\"     (string) dash address\n"
+            "     \"addresses\" : [          (array of string) array of terracoin addresses\n"
+            "        \"terracoinaddress\"     (string) terracoin address\n"
             "        ,...\n"
             "     ]\n"
             "  },\n"
@@ -705,7 +705,7 @@ static UniValue SoftForkMajorityDesc(int minVersion, CBlockIndex* pindex, int nR
     CBlockIndex* pstart = pindex;
     for (int i = 0; i < consensusParams.nMajorityWindow && pstart != NULL; i++)
     {
-        if (pstart->nVersion >= minVersion)
+        if (pstart->nVersion.GetBaseVersion() >= minVersion)
             ++nFound;
         pstart = pstart->pprev;
     }

@@ -137,7 +137,7 @@ public:
     unsigned int nStatus;
 
     //! block header
-    int nVersion;
+    CBlockVersion nVersion;
     uint256 hashMerkleRoot;
     unsigned int nTime;
     unsigned int nBits;
@@ -161,7 +161,7 @@ public:
         nStatus = 0;
         nSequenceId = 0;
 
-        nVersion	   = 0;
+        nVersion.SetNull();
         hashMerkleRoot = uint256();
         nTime          = 0;
         nBits          = 0;
@@ -202,12 +202,17 @@ public:
         return ret;
     }
 
-    CBlockHeader GetBlockHeader() const;
-
-    /* Analyse the block version.  */
-    inline int GetBaseVersion() const
+    CBlockHeader GetBlockHeader() const
     {
-        return CPureBlockHeader::GetBaseVersion(nVersion);
+        CBlockHeader block;
+        block.nVersion       = nVersion;
+        if (pprev)
+            block.hashPrevBlock = pprev->GetBlockHash();
+        block.hashMerkleRoot = hashMerkleRoot;
+        block.nTime          = nTime;
+        block.nBits          = nBits;
+        block.nNonce         = nNonce;
+        return block;
     }
 
     uint256 GetBlockHash() const
